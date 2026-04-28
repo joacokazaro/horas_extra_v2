@@ -4,18 +4,23 @@ function desglosarHorasLegajo_(params) {
 	const registros = (params && params.registros) || [];
 	const totalDisponible = Math.max(0, numero_(params && params.totalDisponible));
 	const cupoNormal = Math.max(0, numero_(params && params.cupoNormal));
-	const feriados = obtenerFeriadosFinales(servicio, servicioNombre, (params && params.feriadosConfig) || null);
+	const feriadosConfig = (params && params.feriadosConfig) || null;
 	const preparados = [];
 
 	for (let i = 0; i < registros.length; i++) {
 		const registro = registros[i] || {};
+		const servicioRegistro = registro && registro.servicio ? registro.servicio : servicio;
+		const servicioNombreRegistro = registro && registro.servicioNombre ? registro.servicioNombre : servicioNombre;
+		const feriadosRegistro = obtenerFeriadosFinales(servicioRegistro, servicioNombreRegistro, feriadosConfig);
 		const horasSolicitadas = redondear_(Math.max(0, numero_(registro.horas)));
 		if (!horasSolicitadas) continue;
 
 		preparados.push({
 			registro: registro,
+			servicio: servicioRegistro,
+			servicioNombre: servicioNombreRegistro,
 			horasSolicitadas: horasSolicitadas,
-			categoriaBase: clasificarHoraExtraBase_(servicio, registro, feriados),
+			categoriaBase: clasificarHoraExtraBase_(servicioRegistro, servicioNombreRegistro, registro, feriadosRegistro),
 			normal: 0,
 			extra50: 0,
 			extra100: 0,
@@ -27,6 +32,11 @@ function desglosarHorasLegajo_(params) {
 
 	for (let i = 0; i < preparados.length; i++) {
 		const item = preparados[i];
+		const feriadosRegistro = obtenerFeriadosFinales(item.servicio, item.servicioNombre, feriadosConfig);
+		if (debeIgnorarExtra100PorServicio_(item.servicio, item.servicioNombre, item && item.registro, feriadosRegistro)) {
+			item.categoriaBase = 'normal';
+			continue;
+		}
 		if (item.categoriaBase !== 'extra100' || restanteDisponible <= 0) continue;
 
 		const asignadas = Math.min(item.horasSolicitadas, restanteDisponible);
@@ -88,13 +98,17 @@ function sumarHorasNo100Solicitadas_(items) {
 	return redondear_(total);
 }
 
-function clasificarHoraExtraBase_(servicio, registro, feriados) {
+function clasificarHoraExtraBase_(servicio, servicioNombre, registro, feriados) {
 	const diaSemana = normalizarTexto_(registro && registro.diaSemana);
 	const fecha = parseFecha_(registro && registro.fecha);
 	const esSabado = esSabadoExtra_(diaSemana, fecha);
 	const esDomingo = esDomingoExtra_(diaSemana, fecha);
 	const esFeriado = esFeriadoExtra_(diaSemana, fecha, feriados);
 	const esSabadoDespues13 = esSabado && !esHastaSabado13_(diaSemana);
+
+	if (debeIgnorarExtra100PorServicio_(servicio, servicioNombre, registro, feriados)) {
+		return 'normal';
+	}
 
 	if (servicio === 'Colegio') {
 		if (esFeriado || esDomingo || esSabado) return 'extra100';
@@ -158,6 +172,29 @@ function esEtiquetaSabadoExplicita_(diaSemana) {
 		diaSemana.indexOf('sabado despues de 13') >= 0 ||
 		diaSemana.indexOf('sabado después de 13') >= 0
 	);
+}
+
+function debeIgnorarExtra100PorServicio_(servicio, servicioNombre, registro, feriados) {
+	const diaSemana = normalizarTexto_(registro && registro.diaSemana);
+	const fecha = parseFecha_(registro && registro.fecha);
+	const esSabado = esSabadoExtra_(diaSemana, fecha);
+
+	return esServicioCaminosDeLasSierras_(servicio, servicioNombre) && esSabado;
+}
+
+function esServicioCaminosDeLasSierras_(servicio, servicioNombre) {
+	const objetivo = 'caminosdelassierras';
+	const candidatos = [servicio, servicioNombre];
+
+	for (let i = 0; i < candidatos.length; i++) {
+		const simplificado = simplificarTextoComparacion_(candidatos[i]);
+		if (!simplificado) continue;
+		if (simplificado === objetivo || simplificado.indexOf(objetivo) >= 0 || objetivo.indexOf(simplificado) >= 0) {
+			return true;
+		}
+	}
+
+	return false;
 }
 
 function sumarHorasPorCampo_(items, campo) {

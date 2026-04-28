@@ -1,7 +1,6 @@
 const CFG = {
   SHEET_CONFIG: 'DATOS SCRIPT',
   SHEET_VALORES: 'VALORES HORAS',
-  SHEET_HORAS_REALES: 'Tabla dinámica 61',
   TOPE_BASE_MENSUAL: 192,
   TZ: Session.getScriptTimeZone() || 'America/Argentina/Cordoba',
 
@@ -71,7 +70,7 @@ function generarResultadosMes() {
     const resumen = resultado.filas;
     const mensaje = construirMensajeEjecucion_(resultado, datos);
 
-    escribirDesgloseEnOperativa_(ctx.hojaOperativa, resultado.operativa);
+    escribirDesgloseEnOperativa_(ctx.hojaOperativa, resultado.operativa, novedadesPorLegajo);
     escribirResultados_(ctx.hojaResultados, resumen);
     setEstado_('OK', mensaje);
     SpreadsheetApp.getActiveSpreadsheet().toast(`${resumen.length} legajos procesados`, 'Horas Extra', 5);
@@ -120,9 +119,9 @@ function getContexto_() {
 
   const archivoNomina = SpreadsheetApp.openByUrl(urlNomina);
   const hojaNomina = archivoNomina.getSheetByName(hojaNominaNombre);
-  const hojaHorasReales = archivoNomina.getSheetByName(CFG.SHEET_HORAS_REALES);
+  const hojaHorasReales = archivoNomina.getSheetByName(hojaNominaNombre);
   if (!hojaNomina) throw new Error(`No existe la hoja ${hojaNominaNombre} en la nómina`);
-  if (!hojaHorasReales) throw new Error(`No existe la hoja ${CFG.SHEET_HORAS_REALES} en el archivo externo`);
+  if (!hojaHorasReales) throw new Error(`No existe la hoja ${hojaNominaNombre} en el archivo externo`);
 
   return {
     ss,
@@ -338,12 +337,16 @@ function construirResumenPorLegajo_(ctx, operativa, novedadesPorLegajo, nominaPo
 
     const item = acumulado[legajo];
     const hsSolicitadas = numero_(row[14]); // O = Cantidad Horas
+    const servicioRegistro = String(row[8] || '').trim() || item.servicioNombre;
+    const tipoServicioRegistro = resolverTipoServicio_(servicioRegistro, servicioRegistro, tiposServicio) || item.servicio;
     item.hsSolicitadas += hsSolicitadas;
     item.registros.push({
       row: row.slice(),
       rowIndex: seleccion.desdeIndex + item.registros.length,
       fecha: row[10], // K = FECHA
       diaSemana: row[11], // L = Día Semana
+      servicio: tipoServicioRegistro,
+      servicioNombre: servicioRegistro,
       horas: hsSolicitadas,
     });
   });
@@ -442,7 +445,7 @@ function construirOperativaDesglosada_(operativa, seleccion, acumulado) {
   const rowsDesglosar = seleccion.rowsCompactadas || seleccion.rows;
 
   for (let i = 0; i < rowsAntes.length; i++) {
-    salida.push(rowsAntes[i].slice());
+    salida.push(limpiarColumnasDesglose_(rowsAntes[i].slice()));
   }
 
   for (let i = 0; i < rowsDesglosar.length; i++) {
@@ -463,7 +466,7 @@ function construirOperativaDesglosada_(operativa, seleccion, acumulado) {
   }
 
   for (let i = 0; i < rowsDespues.length; i++) {
-    salida.push(rowsDespues[i].slice());
+    salida.push(limpiarColumnasDesglose_(rowsDespues[i].slice()));
   }
 
   return salida;
@@ -473,6 +476,13 @@ function expandirFilasDesglosadas_(registroDesglosado, tope) {
   const rowBase = limpiarColumnasDesglose_(registroDesglosado.registro.row.slice());
   const filas = [];
   const tramos = [];
+  const horasSolicitadas = redondear_(numero_(registroDesglosado.horasSolicitadas));
+  const horasAsignadas = redondear_(
+    numero_(registroDesglosado.extra100) +
+    numero_(registroDesglosado.normal) +
+    numero_(registroDesglosado.extra50)
+  );
+  const estadoPendiente = horasAsignadas > 0 ? 'Parcialmente denegado' : 'Denegado';
 
   if (numero_(registroDesglosado.extra100) > 0) {
     tramos.push({ tipo: 'Hora al 100%', horas: registroDesglosado.extra100 });
@@ -489,10 +499,10 @@ function expandirFilasDesglosadas_(registroDesglosado, tope) {
   if (tramos.length <= 1) {
     const fila = rowBase.slice();
     const asignadas = tramos.length ? redondear_(tramos[0].horas) : 0;
-    fila[12] = tramos.length ? tramos[0].tipo : '';
+    fila[12] = tramos.length ? tramos[0].tipo : estadoPendiente;
     fila[13] = redondear_(tope);
     fila[18] = asignadas || '';
-    fila[19] = redondear_(numero_(registroDesglosado.horasSolicitadas) - asignadas);
+    fila[19] = redondear_(horasSolicitadas - asignadas);
     filas.push(fila);
     return filas;
   }
@@ -503,7 +513,7 @@ function expandirFilasDesglosadas_(registroDesglosado, tope) {
 
   if (registroDesglosado.diferencia > 0) {
     const filaPendiente = rowBase.slice();
-    filaPendiente[12] = '';
+    filaPendiente[12] = estadoPendiente;
     filaPendiente[13] = redondear_(tope);
     filaPendiente[14] = redondear_(registroDesglosado.diferencia);
     filaPendiente[18] = '';
@@ -602,9 +612,31 @@ function obtenerHorasOriginalesFilaOperativa_(row) {
   return redondear_(Math.max(solicitadas, asignadas + diferencia));
 }
 
-function escribirDesgloseEnOperativa_(hoja, filas) {
+function escribirDesgloseEnOperativa_(hoja, filas, novedadesPorLegajo) {
   hoja.clearContents();
-  hoja.getRange(1, 1, filas.length, filas[0].length).setValues(filas);
+
+  const range = hoja.getRange(1, 1, filas.length, filas[0].length);
+  range.setValues(filas);
+
+  const fondos = [];
+  const colorNovedad = '#f4c022';
+  const colorDenegado = '#f4cccc';
+
+  for (let i = 0; i < filas.length; i++) {
+    const row = filas[i];
+    const legajo = normalizarLegajo_(row[0]);
+    const fecha = parseFecha_(row[10]);
+    const fechaYmd = fecha ? ymd_(fecha) : '';
+    const estadoPedido = normalizarTexto_(row[12]);
+    const fechasNovedad = (novedadesPorLegajo && novedadesPorLegajo[legajo]) || [];
+    const tieneNovedad = !!(legajo && fechaYmd && fechasNovedad.indexOf(fechaYmd) >= 0);
+    const estaDenegado = estadoPedido === 'denegado' || estadoPedido === 'parcialmente denegado';
+    const color = estaDenegado ? colorDenegado : (tieneNovedad ? colorNovedad : null);
+
+    fondos.push(new Array(filas[0].length).fill(color));
+  }
+
+  range.setBackgrounds(fondos);
 }
 
 function contarLegajosEnFilas_(rows) {
