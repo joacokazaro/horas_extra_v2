@@ -3,6 +3,12 @@ const CFG = {
   SHEET_VALORES: 'VALORES HORAS',
   TOPE_BASE_MENSUAL: 192,
   TZ: Session.getScriptTimeZone() || 'America/Argentina/Cordoba',
+  AUTHORIZED_EXECUTORS: [
+    'francisco.savid@kazaro.com.ar',
+    'lautaro.suarez@kazaro.com.ar',
+    'joaquin.rojas@kazaro.com.ar',
+    'servicio@kazaro.com.ar',
+  ],
 
   SERVICE_CATALOG_URL: 'https://docs.google.com/spreadsheets/d/1Mo_E4ZOngzvu-yBWl0fM05Xz5eeYq1C0CEWP0oL17Hc/edit',
   SERVICE_CATALOG_SHEET: 'Lista de Servicios',
@@ -50,6 +56,11 @@ function validarConfiguracion() {
 }
 
 function generarResultadosMes() {
+  if (!usuarioAutorizadoParaEjecutar_()) {
+    SpreadsheetApp.getActiveSpreadsheet().toast('No tenes permisos para ejecutar este boton');
+    return;
+  }
+
   try {
     const ctx = getContexto_();
     const datos = cargarDatosBase_(ctx);
@@ -347,6 +358,7 @@ function construirResumenPorLegajo_(ctx, operativa, novedadesPorLegajo, nominaPo
       diaSemana: row[11], // L = Día Semana
       servicio: tipoServicioRegistro,
       servicioNombre: servicioRegistro,
+      esEvento: esPedidoEvento_(row[20]), // U = Evento?
       horas: hsSolicitadas,
     });
   });
@@ -612,6 +624,10 @@ function obtenerHorasOriginalesFilaOperativa_(row) {
   return redondear_(Math.max(solicitadas, asignadas + diferencia));
 }
 
+function esPedidoEvento_(valor) {
+  return normalizarTexto_(valor) === 'si';
+}
+
 function escribirDesgloseEnOperativa_(hoja, filas, novedadesPorLegajo) {
   hoja.clearContents();
 
@@ -621,6 +637,7 @@ function escribirDesgloseEnOperativa_(hoja, filas, novedadesPorLegajo) {
   const fondos = [];
   const colorNovedad = '#f4c022';
   const colorDenegado = '#f4cccc';
+  const colorEvento = '#cfe2f3';
 
   for (let i = 0; i < filas.length; i++) {
     const row = filas[i];
@@ -628,10 +645,11 @@ function escribirDesgloseEnOperativa_(hoja, filas, novedadesPorLegajo) {
     const fecha = parseFecha_(row[10]);
     const fechaYmd = fecha ? ymd_(fecha) : '';
     const estadoPedido = normalizarTexto_(row[12]);
+    const esEvento = esPedidoEvento_(row[20]);
     const fechasNovedad = (novedadesPorLegajo && novedadesPorLegajo[legajo]) || [];
     const tieneNovedad = !!(legajo && fechaYmd && fechasNovedad.indexOf(fechaYmd) >= 0);
     const estaDenegado = estadoPedido === 'denegado' || estadoPedido === 'parcialmente denegado';
-    const color = estaDenegado ? colorDenegado : (tieneNovedad ? colorNovedad : null);
+    const color = esEvento ? colorEvento : (estaDenegado ? colorDenegado : (tieneNovedad ? colorNovedad : null));
 
     fondos.push(new Array(filas[0].length).fill(color));
   }
@@ -1094,6 +1112,21 @@ function resolverIndiceColumna_(mapa, aliases, fallback) {
 
 function valorEnIndice_(row, index) {
   return index >= 0 ? row[index] || '' : '';
+}
+
+function usuarioAutorizadoParaEjecutar_() {
+  const usuario = normalizarTexto_(Session.getActiveUser().getEmail());
+  if (!usuario) return false;
+
+  const permitidos = CFG.AUTHORIZED_EXECUTORS || [];
+
+  for (let i = 0; i < permitidos.length; i++) {
+    if (usuario === normalizarTexto_(permitidos[i])) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 function parseFecha_(v) {

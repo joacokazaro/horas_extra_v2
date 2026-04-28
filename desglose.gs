@@ -99,6 +99,10 @@ function sumarHorasNo100Solicitadas_(items) {
 }
 
 function clasificarHoraExtraBase_(servicio, servicioNombre, registro, feriados) {
+	if (esRegistroEvento_(registro)) {
+		return 'extra100';
+	}
+
 	const diaSemana = normalizarTexto_(registro && registro.diaSemana);
 	const fecha = parseFecha_(registro && registro.fecha);
 	const esSabado = esSabadoExtra_(diaSemana, fecha);
@@ -175,11 +179,17 @@ function esEtiquetaSabadoExplicita_(diaSemana) {
 }
 
 function debeIgnorarExtra100PorServicio_(servicio, servicioNombre, registro, feriados) {
+	if (esRegistroEvento_(registro)) return false;
+
 	const diaSemana = normalizarTexto_(registro && registro.diaSemana);
 	const fecha = parseFecha_(registro && registro.fecha);
 	const esSabado = esSabadoExtra_(diaSemana, fecha);
 
 	return esServicioCaminosDeLasSierras_(servicio, servicioNombre) && esSabado;
+}
+
+function esRegistroEvento_(registro) {
+	return normalizarTexto_(registro && registro.esEvento) === 'si' || !!(registro && registro.esEvento === true);
 }
 
 function esServicioCaminosDeLasSierras_(servicio, servicioNombre) {
