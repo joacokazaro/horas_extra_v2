@@ -887,31 +887,42 @@ function calcularTopeMensual_(hsTeoricasBase, hsTeoricasFinales) {
 function calcularHorasTeoricasBaseMensuales_(servicio, jornadaSemanal, mes, anio) {
   const diasLaborales = obtenerDiasLaborales_(servicio, anio, mes, new Set());
   let diasFinales = diasLaborales.slice();
+  const jornada = Number(jornadaSemanal || 0);
 
   if (servicio === 'Supermercado' || servicio === 'Hospital') {
-    const francos = Number(jornadaSemanal) === 44 ? 6 : 8;
+    const francos = jornada === 44 ? 6 : 8;
     diasFinales = diasFinales.slice(0, Math.max(0, diasFinales.length - francos));
   }
 
   let horas = 0;
 
   diasFinales.forEach((dia) => {
-    if (servicio === 'Lunes a Sábado' && Number(jornadaSemanal) === 44) {
+    if (servicio === 'Supermercado' && jornada === 24) {
+      horas += 4;
+      return;
+    }
+
+    if (servicio === 'Supermercado' && jornada === 36) {
+      horas += 6;
+      return;
+    }
+
+    if (servicio === 'Lunes a Sábado' && jornada === 44) {
       horas += dia.getDay() === 6 ? 4 : 8;
       return;
     }
 
-    if (servicio === 'Lunes a Sábado' && Number(jornadaSemanal) === 36) {
+    if (servicio === 'Lunes a Sábado' && jornada === 36) {
       horas += 6;
       return;
     }
 
-    if (Number(jornadaSemanal) === 40 || Number(jornadaSemanal) === 44) {
+    if (jornada === 40 || jornada === 44) {
       horas += 8;
-    } else if (Number(jornadaSemanal) === 30) {
+    } else if (jornada === 30) {
       horas += 6;
     } else {
-      horas += Number(jornadaSemanal || 0) / 5;
+      horas += jornada / 5;
     }
   });
 
@@ -923,33 +934,44 @@ function calcularHorasTeoricasMensuales_(servicio, servicioNombre, jornadaSemana
   const feriados = obtenerFeriadosFinales(servicio, servicioNombre, feriadosConfig);
   const diasLaborales = obtenerDiasLaborales_(servicio, anio, mes, feriados);
   const diasSinAusencias = diasLaborales.filter((d) => !ausenciasSet.has(ymd_(d)));
+  const jornada = Number(jornadaSemanal || 0);
 
   let diasFinales = diasSinAusencias.slice();
 
   if (servicio === 'Supermercado' || servicio === 'Hospital') {
-    const francos = Number(jornadaSemanal) === 44 ? 6 : 8;
+    const francos = jornada === 44 ? 6 : 8;
     diasFinales = diasFinales.slice(0, Math.max(0, diasFinales.length - francos));
   }
 
   let horas = 0;
 
   diasFinales.forEach((dia) => {
-    if (servicio === 'Lunes a Sábado' && Number(jornadaSemanal) === 44) {
+    if (servicio === 'Supermercado' && jornada === 24) {
+      horas += 4;
+      return;
+    }
+
+    if (servicio === 'Supermercado' && jornada === 36) {
+      horas += 6;
+      return;
+    }
+
+    if (servicio === 'Lunes a Sábado' && jornada === 44) {
       horas += dia.getDay() === 6 ? 4 : 8;
       return;
     }
 
-    if (servicio === 'Lunes a Sábado' && Number(jornadaSemanal) === 36) {
+    if (servicio === 'Lunes a Sábado' && jornada === 36) {
       horas += 6;
       return;
     }
 
-    if (Number(jornadaSemanal) === 40 || Number(jornadaSemanal) === 44) {
+    if (jornada === 40 || jornada === 44) {
       horas += 8;
-    } else if (Number(jornadaSemanal) === 30) {
+    } else if (jornada === 30) {
       horas += 6;
     } else {
-      horas += Number(jornadaSemanal || 0) / 5;
+      horas += jornada / 5;
     }
   });
 
