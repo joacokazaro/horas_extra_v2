@@ -17,7 +17,7 @@ const CFG = {
 
   RESULT_HEADERS: [
     'LEG', 'NOMBRE', 'APELLIDO', 'TOPE', 'HS SOLICITADAS', 'HS TEORICAS',
-    'HS REALES', 'CONTROL OP', 'DIFERENCIA', 'HS 100', 'HS 50', 'HS NORMALES'
+    'HS REALES', 'CONTROL OP', 'DIFERENCIA', 'HS 100', 'HS 50', 'HS NORMALES', 'SUPERVISOR'
   ],
 
   CONFIG_CELLS: {
@@ -305,6 +305,7 @@ function construirResumenPorLegajo_(ctx, operativa, novedadesPorLegajo, nominaPo
 
     if (!acumulado[legajo]) {
       const persona = nominaPorLegajo[legajo] || {};
+      const supervisor = String(row[5] || '').trim();
       const jornada = Number(persona.jornada || row[6] || 0);
       const categoria = String(persona.categoria || row[7] || '').trim();
       const servicioOrigen = String(row[8] || '').trim();
@@ -332,6 +333,7 @@ function construirResumenPorLegajo_(ctx, operativa, novedadesPorLegajo, nominaPo
         jornada,
         servicio,
         servicioNombre: nombreServicio,
+        supervisor,
         tope,
         hsSolicitadas: 0,
         hsTeoricas,
@@ -406,6 +408,7 @@ function construirResumenPorLegajo_(ctx, operativa, novedadesPorLegajo, nominaPo
       item.hs100,
       item.hs50,
       item.hsNormales,
+      item.supervisor,
     ]));
 
   const operativaDesglosada = construirOperativaDesglosada_(operativa, seleccion, acumulado);
